@@ -1,8 +1,8 @@
 import re
 import joblib
 import nltk
-import requests
 import streamlit as st
+from google import genai
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
@@ -54,7 +54,7 @@ except Exception as e:
 
 # User Interface
 st.title("📰 Fake News Detector & Fact Checker")
-st.markdown("Analyze news headlines using Machine Learning style classification and live database fact checking.")
+st.markdown("Analyze news headlines using Machine Learning style classification and Gemini AI real-time fact-checking.")
 
 user_input = st.text_area(
     label="News Content Input",
@@ -68,7 +68,7 @@ with col1:
     predict_btn = st.button("Predict Style (ML Model)", type="primary", use_container_width=True)
 
 with col2:
-    fact_check_btn = st.button("Search Fact Database", use_container_width=True)
+    gemini_btn = st.button("AI Fact Check (Gemini)", use_container_width=True)
 
 # 1. Machine Learning Prediction Logic
 if predict_btn:
@@ -98,37 +98,36 @@ if predict_btn:
         st.write(f"- **Real News Probability:** {real_prob:.2f}%")
         st.write(f"- **Fake News Probability:** {fake_prob:.2f}%")
 
-# 2. Google Fact Check API Lookup Logic
-if fact_check_btn:
+# 2. Gemini AI Fact-Check Logic
+if gemini_btn:
     if not user_input.strip():
         st.warning("Please enter a claim or headline to fact check.")
     else:
-        # Retrieve key from Streamlit Secrets
-        api_key = st.secrets.get("GOOGLE_FACT_CHECK_KEY", "")
+        # Retrieve key from Streamlit Secrets or fall back to provided token
+        api_key = st.secrets.get("GEMINI_API_KEY", "AQ.Ab8RN6LxD8a3RFB5VBtlNEnEfeDARCkVbO2V9iqOsPhaReqM_w")
         
         if not api_key:
-            st.warning("⚠️ API Key missing in Streamlit Secrets. Please configure `GOOGLE_FACT_CHECK_KEY` under Settings -> Secrets.")
+            st.error("Missing Gemini API Key. Please add `GEMINI_API_KEY` to your Streamlit Secrets.")
         else:
-            url = "https://factchecktools.googleapis.com/v1alpha1/claims:search"
-            params = {"query": user_input, "key": api_key}
-            
             try:
-                res = requests.get(url, params=params)
-                if res.status_code == 200:
-                    data = res.json()
-                    if "claims" in data and len(data["claims"]) > 0:
-                        st.subheader("Verified Fact Check Records:")
-                        for claim in data["claims"]:
-                            claim_text = claim.get("text", "N/A")
-                            st.markdown(f"**Claim:** \"{claim_text}\"")
-                            for review in claim.get("claimReview", []):
-                                pub = review.get("publisher", {}).get("name", "Publisher")
-                                rating = review.get("textualRating", "No rating")
-                                review_url = review.get("url", "#")
-                                st.info(f"**Publisher:** {pub}\n\n**Verdict:** {rating}\n\n[Read Full Report]({review_url})")
-                    else:
-                        st.warning("No official fact-check records found matching this exact query.")
-                else:
-                    st.error(f"API Error ({res.status_code}): Ensure your Google Cloud API Key is valid and the Fact Check Tools API is enabled.")
+                with st.spinner("Analyzing claims using Gemini AI..."):
+                    # Initialize Gemini Client
+                    client = genai.Client(api_key=api_key)
+                    
+                    prompt = (
+                        "You are an expert real-time fact-checker. Analyze the following news claim or headline.\n"
+                        "1. Clearly state whether the statement is TRUE, FALSE, UNVERIFIED, or MISLEADING.\n"
+                        "2. Provide an estimated confidence rating (e.g. 95%).\n"
+                        "3. Give a clear, concise 2-3 sentence explanation explaining why.\n\n"
+                        f"Claim to verify: \"{user_input}\""
+                    )
+                    
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt
+                    )
+                    
+                    st.subheader("🤖 Gemini AI Fact-Check Analysis:")
+                    st.info(response.text)
             except Exception as ex:
-                st.error(f"Request failed: {ex}")
+                st.error(f"Gemini API Exception: {ex}")
