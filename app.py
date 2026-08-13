@@ -1,8 +1,8 @@
 import re
 import joblib
 import nltk
+import requests
 import streamlit as st
-from google import genai
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
@@ -30,9 +30,7 @@ lemmatizer = WordNetLemmatizer()
 
 def preprocess_text(text):
     text = text.lower()
-    # Remove leading location or publisher tags (e.g., "WASHINGTON (Reuters) -", "GENEVA —")
     text = re.sub(r'^[a-z\s,]+(?:\(reuters\))?\s*[\-—]\s*', '', text)
-    # Remove special characters and numbers
     text = re.sub(r'[^a-zA-Z\s]', '', text)
     tokens = word_tokenize(text)
     tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
@@ -98,37 +96,39 @@ if predict_btn:
         st.write(f"- **Real News Probability:** {real_prob:.2f}%")
         st.write(f"- **Fake News Probability:** {fake_prob:.2f}%")
 
-# 2. Gemini AI Fact-Check Logic
+# 2. Gemini Fact Check Logic via Direct REST API
 if gemini_btn:
     if not user_input.strip():
         st.warning("Please enter a claim or headline to fact check.")
     else:
-        # Retrieve key from Streamlit Secrets or fall back to provided token
-        api_key = st.secrets.get("GEMINI_API_KEY", "AQ.Ab8RN6LxD8a3RFB5VBtlNEnEfeDARCkVbO2V9iqOsPhaReqM_w")
+        api_key = st.secrets.get("GEMINI_API_KEY", "")
         
         if not api_key:
-            st.error("Missing Gemini API Key. Please add `GEMINI_API_KEY` to your Streamlit Secrets.")
+            st.error("Missing GEMINI_API_KEY. Please set an 'AIzaSy...' API key in Streamlit Secrets.")
         else:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            
+            prompt = (
+                "You are an expert real-time fact-checker. Analyze the following news statement:\n"
+                "1. State clearly whether it is TRUE, FALSE, MISLEADING, or UNVERIFIED.\n"
+                "2. Provide an estimated confidence rating percentage.\n"
+                "3. Provide a brief 2-3 sentence explanation with verifiable facts.\n\n"
+                f"Statement: \"{user_input}\""
+            )
+            
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}]
+            }
+            
             try:
-                with st.spinner("Analyzing claims using Gemini AI..."):
-                    # Initialize Gemini Client
-                    client = genai.Client(api_key=api_key)
-                    
-                    prompt = (
-                        "You are an expert real-time fact-checker. Analyze the following news claim or headline.\n"
-                        "1. Clearly state whether the statement is TRUE, FALSE, UNVERIFIED, or MISLEADING.\n"
-                        "2. Provide an estimated confidence rating (e.g. 95%).\n"
-                        "3. Give a clear, concise 2-3 sentence explanation explaining why.\n\n"
-                        f"Claim to verify: \"{user_input}\""
-                    )
-                    
-                    # Updated model string to gemini-1.5-flash
-                    response = client.models.generate_content(
-                        model="gemini-1.5-flash",
-                        contents=prompt
-                    )
-                    
-                    st.subheader("🤖 Gemini AI Fact-Check Analysis:")
-                    st.info(response.text)
+                with st.spinner("Analyzing claim with Gemini AI..."):
+                    res = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+                    if res.status_code == 200:
+                        data = res.json()
+                        response_text = data['candidates'][0]['content']['parts'][0]['text']
+                        st.subheader("🤖 Gemini AI Fact-Check Result:")
+                        st.info(response_text)
+                    else:
+                        st.error(f"API Error ({res.status_code}): Ensure your API key starts with 'AIzaSy' and is valid.")
             except Exception as ex:
-                st.error(f"Gemini API Exception: {ex}")
+                st.error(f"Request failed: {ex}")
