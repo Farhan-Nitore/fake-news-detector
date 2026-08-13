@@ -28,13 +28,9 @@ stop_words = set(stopwords.words('english'))
 lemmatizer = WordNetLemmatizer()
 
 def preprocess_text(text):
-    # Standardize casing
     text = text.lower()
-    # Remove special characters, numbers, and punctuation
     text = re.sub(r'[^a-zA-Z\s]', '', text)
-    # Tokenize input
     tokens = word_tokenize(text)
-    # Filter stopwords and lemmatize
     tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
     return ' '.join(tokens)
 
@@ -68,14 +64,28 @@ if st.button("Predict Authenticity", type="primary"):
     elif not user_input.strip():
         st.warning("Please enter news text prior to running prediction.")
     else:
-        # Pipeline: Preprocess -> Vectorize -> Predict
+        # Pipeline: Preprocess -> Vectorize
         cleaned_text = preprocess_text(user_input)
         vectorized_text = vectorizer.transform([cleaned_text])
+        
+        # Get probability distribution [prob_fake, prob_real]
+        probabilities = model.predict_proba(vectorized_text)[0]
+        fake_prob = probabilities[0] * 100
+        real_prob = probabilities[1] * 100
+        
         prediction = model.predict(vectorized_text)[0]
         
         # Display Results
         st.subheader("Analysis Result:")
         if prediction == 1:
-            st.success("✅ REAL / AUTHENTIC NEWS")
+            st.success(f"✅ REAL NEWS ({real_prob:.2f}% Confidence)")
+            st.progress(int(real_prob))
         else:
-            st.error("🚨 FAKE / UNVERIFIED NEWS")
+            st.error(f"🚨 FAKE NEWS ({fake_prob:.2f}% Confidence)")
+            st.progress(int(fake_prob))
+            
+        # Detailed Breakdown
+        st.write("---")
+        st.markdown("**Confidence Breakdown:**")
+        st.write(f"- **Real News Probability:** {real_prob:.2f}%")
+        st.write(f"- **Fake News Probability:** {fake_prob:.2f}%")
