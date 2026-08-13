@@ -96,17 +96,17 @@ if predict_btn:
         st.write(f"- **Real News Probability:** {real_prob:.2f}%")
         st.write(f"- **Fake News Probability:** {fake_prob:.2f}%")
 
-# 2. Gemini Fact Check Logic via Direct REST API
+# 2. Gemini Fact Check Logic supporting AQ Auth Keys
 if gemini_btn:
     if not user_input.strip():
         st.warning("Please enter a claim or headline to fact check.")
     else:
-        api_key = st.secrets.get("GEMINI_API_KEY", "")
+        api_key = st.secrets.get("GEMINI_API_KEY", "AQ.Ab8RN6KWNKyZCy7QTX5CpRTzt1Sg1YtVSKdOIMwdYf2oLTQiRA")
         
         if not api_key:
-            st.error("Missing GEMINI_API_KEY. Please set an 'AIzaSy...' API key in Streamlit Secrets.")
+            st.error("Missing GEMINI_API_KEY in Streamlit Secrets.")
         else:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
             
             prompt = (
                 "You are an expert real-time fact-checker. Analyze the following news statement:\n"
@@ -120,15 +120,24 @@ if gemini_btn:
                 "contents": [{"parts": [{"text": prompt}]}]
             }
             
+            # Send AQ key in Authorization header or x-goog-api-key depending on key structure
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}" if api_key.startswith("AQ.") else None,
+                "x-goog-api-key": api_key if not api_key.startswith("AQ.") else None
+            }
+            # Clean dictionary headers
+            headers = {k: v for k, v in headers.items() if v is not None}
+            
             try:
                 with st.spinner("Analyzing claim with Gemini AI..."):
-                    res = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+                    res = requests.post(url, json=payload, headers=headers)
                     if res.status_code == 200:
                         data = res.json()
                         response_text = data['candidates'][0]['content']['parts'][0]['text']
                         st.subheader("🤖 Gemini AI Fact-Check Result:")
                         st.info(response_text)
                     else:
-                        st.error(f"API Error ({res.status_code}): Ensure your API key starts with 'AIzaSy' and is valid.")
+                        st.error(f"API Error ({res.status_code}): {res.text}")
             except Exception as ex:
                 st.error(f"Request failed: {ex}")
